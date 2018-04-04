@@ -7,14 +7,17 @@ output: html_notebook
 
 The previous notebook was a simple introduction to the syntax for constructing a `ggplot` object.  This notebook will introduce a more meaningful example using landcover data from the NSF National Ecological Observation Network (NEON) project.  For more information you can look at the [NEON website](http://www.neonscience.org)
 
-Load the tidyverse library
+Load the tidyverse library and ggrepel
 
 ```{r libraries}
 library(tidyverse)
+library(ggrepel)
 ```
 
 
-For this project we are going to use vegetation structure data from the San Juaquin Experimental Range in California.
+Dr. Montana gave us a sample vegetation structure data from the San Juaquin Experimental Range in California.
+
+n = 362 records
 
 ### Load the data
 
@@ -24,43 +27,106 @@ sjer_veg <- read_csv("data/D17_2013_SJER_vegStr.csv")
 sjer_veg
 ```
 
-The loaded data contain observations for vegetation structure for individual plots at the site.  We can use our data wrangling skills to query the data, summarzing various fields of interest by plot.
 
-```{r summary-queries}
+
+Instead of summarizing by plot (as in the example), I summarized by taxonid. 
+
+```{r maxcan_summ}
 sjer_veg %>% 
-  group_by(plotid) %>% 
-  summarise(mean(maxcanopydiam))
+  group_by(taxonid) %>% 
+  summarise(m = mean(maxcanopydiam)) 
+ 
 ```
 
-We can quickly visualize this in a single piped operation.
+
+
+Created a bar chart based on the taxonid grouping, and summarizing the mean for the percent living canopy within each of the 11 taxonid groups
 
 ```{r summary-viz}
 sjer_veg %>% 
-  group_by(plotid) %>% 
-  summarise(m = mean(maxcanopydiam)) %>% 
-  ggplot(aes(x = plotid, y = m)) +
+ 
+  group_by(taxonid) %>% 
+  summarise(l = mean(livingcanopy)) %>% 
+  ggplot(aes(x = taxonid, y = l)) +
     geom_col() + # a column plot for each entry
-    ggtitle("SJER Distribution of Canopy Diameter by Plot") +
-    xlab("Plot ID") + 
-    ylab("Max Diameter (m)") +
-    theme_bw() + #change the theme
+    ggtitle("SJER Distribution of Mean Living Canopy by Taxon Id") +
+    xlab("Taxon ID") + 
+    ylab("Living Canopy (%)") +
+    theme_minimal() + #change the theme
     theme(plot.margin=unit(c(.5,1,.5,1), "cm"), #adjust the margin (top, right, bottom, left)
           axis.text.x = element_text(angle = -60, hjust = -0.1)) # rotate the axis labels
 
 ```
 
 
-The benefit of the tidyverse is how well the libraries work together to streamline data prep, query, and visualizations.  Let's try another example.  The data folder contains a file with a description of the fields in the vegStructure data.  There is a field called `livingcanopy` describing the estimated percent of the canopy that is living.  We can use that as a color gradient for a plot of canopy diameter compared to stem height.
+ So now I created a new data frame taxgroups, in which I summarize the mean values for three variables, as grouped by taxonid
 
-```{r height-diameter}
 
-sjer_veg %>% 
-  select(maxcanopydiam, stemheight, livingcanopy) %>% 
-  ggplot(aes(x = stemheight, y = maxcanopydiam)) + 
+=
+```{r group_by_livcan}
+taxgroups <- sjer_veg %>% 
+  select(taxonid, livingcanopy, maxcanopydiam, stemheight) %>% 
+  group_by(taxonid) %>%
+  summarise(livingcanopy = mean(livingcanopy), maxcanopydiam = mean(maxcanopydiam), stemheight = mean(stemheight))
+ 
+taxgroups
+
+```
+
+Great!  Now I want to create an indicator of how plentiful each tree type is within each taxonid in this dataset (n = 362)  
+
+the frequncy ranged from 1 to 123
+
+```{r count_taxonNum}
+
+taxonum <- sjer_veg %>% 
+  select(taxonid) %>% 
+  count(taxonid)
+
+taxonum
+
+```
+
+
+so now I wanted to join the two dataframes (taxgroups and taxonum) I created by taxonid into a new dataframe called allgroups
+
+
+
+```{r joinum}
+
+allgroups <- full_join(taxgroups, taxonum, by = "taxonid")
+
+allgroups
+
+```
+
+Plotting allgroups, we have stemheight and maxcanopy on the x,y axis, with the living canopy a color scale, and the frequency of taxoid occurances used as a scale for the size of the group.
+
+Found a good example to label the points using a package called ggrepel, that worked nicely.  Thankyou to "Tung" on stackoverflow. 
+Retrieved on April 4, 2018, from https://stackoverflow.com/questions/15624656/label-points-in-gem-point 
+
+
+```{r plot_allgroups}
+
+allgroups %>% 
+  ggplot(aes(x = stemheight, 
+             y = maxcanopydiam, 
+             label = taxonid, size = n)) + 
     geom_point(aes(color = livingcanopy)) +
-    scale_color_gradient(low = "red", high = "green")
+    scale_color_gradient(low = "red", high = "green") +
+  geom_label_repel(,
+                   box.padding = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50', 
+                   size = 2.5) +
+                   theme_classic(base_size = 12) +
+   ggtitle("Distribution of 
+           Mean Stem Height and Max Canopy Diameter by Taxon Id, 
+              with Mean Living Canopy Percentage (color scale)
+              and Taxon Id occurance frequency (point size)") +
+    xlab("Stem Height (m)") + 
+    ylab("Max Canopy Diameter (m)") 
 
-# how can we improve this plot?
 ```
 
 
